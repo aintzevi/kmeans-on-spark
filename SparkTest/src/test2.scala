@@ -28,7 +28,7 @@ object RunIntro extends Serializable {
 //  val clusters = KMeans.train(parsedData, numClusters, numIterations)
 //  clusters.save(sc, "testClusters")
   
-    var clusterMap = new HashMap[Int,MutableList[mllib.linalg.Vector]].withDefaultValue(MutableList())
+    var clusterMap = new HashMap[Int,MutableList[mllib.linalg.Vector]]
     
     
 //  val rddMap = sc.parallelize(Map().toSeq)
@@ -42,9 +42,15 @@ object RunIntro extends Serializable {
 
 //    clusterMap.put(0,MutableList(Vectors.dense(4,5,6)))
     val parsedDataList = parsedData.toArray()
-    for (i <- 0 until parsedData.count().toInt) {
+    for (i <- 0 until parsedData.count().toInt) 
+    {
 //      clusterArray(i) = clusters.predict(parsedDataList(i))
-      clusterMap.put(clusters.predict(parsedDataList(i)),clusterMap(clusters.predict((parsedDataList(i)))).+=(parsedDataList(i)))
+//      if (clusterMap())
+      val j = clusters.predict(parsedDataList(i))
+      if(clusterMap.keySet.contains(j))
+          clusterMap.put(j,clusterMap.get(j).get+=parsedDataList(i))
+      else
+        clusterMap.put(j,MutableList(parsedDataList(i)))
     }
   
 //    var i = -1
@@ -62,9 +68,14 @@ object RunIntro extends Serializable {
 //  clusters.predict(parsedData).foreach(println)
   //println(clusters.predict(vec))
   
-  clusterMap.foreach(println)
-  println(clusterMap.keys.size+" "+parsedData.count())
+//  clusterMap.get(0).foreach(println)
+  println(clusterMap.keys.size+" "+clusterMap.get(1).size+" "+parsedData.count())
   
+  for (i <- 0 until clusterMap.keySet.size) {
+    println(clusterMap.get(i).get.size)
+//    println("Item done")
+//      println(clusterMap(i))
+  }
   
   
 //  for x in parsedData
