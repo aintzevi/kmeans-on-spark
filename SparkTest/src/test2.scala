@@ -18,34 +18,43 @@ object RunIntro extends Serializable {
   val data = sc.textFile("docword.txt")
   val parsedData = data.map(s => Vectors.dense(s.split(' ').map(_.toDouble))).cache()
 
+  var wordMap = new HashMap[Int,HashMap[Int,Int]]
+  val parsedDataList = parsedData.toArray()
+  var innerMap = new HashMap[Int,Int]
+  var previous = parsedDataList(0).toArray(0).toInt
+  for(i<-0 until parsedDataList.length)
+  {   
+      val key = parsedDataList(i).toArray(0).toInt
+      val secKey = parsedDataList(i).toArray(1).toInt
+      val frequency = parsedDataList(i).toArray(2).toInt
+      innerMap.put(secKey,frequency)
+      wordMap.put(key,innerMap)
+      if(!(previous == key))
+      {
+         previous = key
+         innerMap = new HashMap[Int,Int]
+      }
+  }
+  wordMap.foreach(println)
+
   // Cluster the data into two classes using KMeans
-  val numClusters = 610
-  val numIterations = 17
-  val clusters = KMeansModel.load(sc, "testClusters")
+  /*val numClusters = 20
+  val numIterations = 20
+  //val clusters = KMeansModel.load(sc, "testClusters")
   
   // Running KMeans algorithm 
   
-//  val clusters = KMeans.train(parsedData, numClusters, numIterations)
-//  clusters.save(sc, "testClusters")
+
   
     var clusterMap = new HashMap[Int,MutableList[mllib.linalg.Vector]]
     
-    
-//  val rddMap = sc.parallelize(Map().toSeq)
-  
-  //var clusterMap:Map[Int,MutableList[mllib.linalg.Vector]] = Map()
-//  val rdd = sc.parallelize(clusterMap.toSeq)
-  
-//  clusters.clusterCenters.foreach(println)
-//  val vec = Vectors.dense(-1,-1,-1)
     var clusterArray = new Array[Int](parsedData.count().toInt)
 
-//    clusterMap.put(0,MutableList(Vectors.dense(4,5,6)))
+
     val parsedDataList = parsedData.toArray()
     for (i <- 0 until parsedData.count().toInt) 
     {
-//      clusterArray(i) = clusters.predict(parsedDataList(i))
-//      if (clusterMap())
+
       val j = clusters.predict(parsedDataList(i))
       if(clusterMap.keySet.contains(j))
           clusterMap.put(j,clusterMap.get(j).get+=parsedDataList(i))
@@ -84,7 +93,7 @@ object RunIntro extends Serializable {
   
   // Evaluate clustering by computing Within Set Sum of Squared Errors
   val WSSSE = clusters.computeCost(parsedData)
-  println("Within Set Sum of Squared Errors = " + WSSSE)
+  println("Within Set Sum of Squared Errors = " + WSSSE)*/
   
   /*val noheader = rawblocks.filter(x => !isHeader(x))
   val vecData = rawblocks.map(s => Vectors.dense(s.split(' ').map(_.toDouble))).cache()
