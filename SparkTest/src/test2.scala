@@ -14,10 +14,83 @@ object RunIntro extends Serializable {
 //  def isHeader(line: String) = line.split(' ').length < 2
   
   
-  val data = sc.textFile("docword.txt")
-  //val parsedData = data.map(s => Vectors.dense(s.split(' ').map(_.toDouble))).cache()
- val keyValueRDD = data.map(line => (line.split(' ')(0).toString,(line.split(' ')(1)+" "+line.split(' ')(2)).toString())).cache()
-  val groupedByKey = keyValueRDD.groupByKey()
+  val data = sc.textFile("docword.nips.txt")
+//  Num of docs
+  val distinctDocs = data.toArray()(0).toInt
+//  Num of distinct words
+  val distinctWords = data.toArray()(1).toInt
+//  Total num of words
+  val totalWordCount = data.toArray()(2).toInt
+  
+//  All lines except the first 3
+  val cleanData = data.filter ( x => x.split(' ').length != 1)
+  
+//  Create a map from docIDs to array of tuples like [ wordID wordFreq,wordID wordFreq ]
+  val docToWordTuplesRDD = cleanData.map(line => (line.split(' ')(0).toString,(line.split(' ')(1)+" "+line.split(' ')(2)).toString())).cache()
+  
+  val groupedByDoc = docToWordTuplesRDD.groupByKey()
+  
+//  groupedByDoc.foreach(println)
+  val docVectors = groupedByDoc.map(key => Vectors.sparse(distinctWords+1,  // For each doc
+      key._2.toString.replace("CompactBuffer(", "").replace(")", "").split(',').map(x => x.trim().split(' ')(0).toInt),  // Get all wordIDs as sparse Vector positions
+      key._2.toString.replace("CompactBuffer(", "").replace(")", "").split(',').map(x => x.trim().split(' ')(1).toDouble))) // Get all wordFreqs as sparse Vector contents
+//  docVectors.foreach(println)
+  
+    
+//  Init variables
+   var prevError = Double.MaxValue
+   var err = 1.0
+   var numClusters = 20
+   var count = 0
+   println("Initializing complete")
+   
+   while (count < 0.01){
+     count = count + 1
+     println("Iteration " + count)
+     numClusters = numClusters.+(1)
+     val clusters = KMeans.train(docVectors, numClusters, 20)
+     val WSSE = clusters.computeCost(docVectors)
+     println("Iteration " + count)
+     println("Within Set Sum of Squared Errors = " + WSSE)
+     err = 1.0 - (WSSE/prevError)
+     prevError = WSSE
+     println("Error: "+err+ " previous: " +prevError)
+   }
+//  prevError = 
+//  while (err > 0.5){
+//    clusters+=1;  
+//    kMeans(clusters)
+//    WSSE = kMeans.getWSSE();
+//    err = 1 - (WSSE / prevError)
+//    prevError = WSSE;
+//    println("Error" + err)
+//    }
+     
+     
+     
+     
+//  1) RDD apo docID se tuple [ predict(docID)  minDistFromAllCentersExceptItsOwnClusterCenterID ]   
+//     
+//  2) RDD backupClusters = clusterCenter se backupClusterCenter
+//  
+//  3) backupClusters.reduceByID()
+//  
+//  
+//  
+//  
+//  
+//  
+//  
+//  
+//  
+//  
+//  
+//  
+//  
+//  
+  
+     
+     
  /* var wordMap = new HashMap[Int,HashMap[Int,Int]]
   val parsedDataList = parsedData.toArray()
   var innerMap = new HashMap[Int,Int]
@@ -104,7 +177,6 @@ object RunIntro extends Serializable {
   val numClusters = 2
   val numIterations = 20
   val clusters = KMeans.train(vecData, numClusters, numIterations)
-
   val WSSSE = clusters.computeCost(vecData)
   println("Within Set Sum of Squared Errors = " + WSSSE)
   
