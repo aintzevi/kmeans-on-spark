@@ -10,15 +10,15 @@ import org.apache.spark.mllib.clustering.KMeans
 object RunIntro extends Serializable {
   def main(args: Array[String]): Unit = {
   val sc = new SparkContext(new SparkConf().setAppName("Intro").setMaster("local"))
-   
 //  val rawblocks = sc.textFile("docword.nips.txt")
 //  def isHeader(line: String) = line.split(' ').length < 2
   
   
   val data = sc.textFile("docword.txt")
-  val parsedData = data.map(s => Vectors.dense(s.split(' ').map(_.toDouble))).cache()
-
-  var wordMap = new HashMap[Int,HashMap[Int,Int]]
+  //val parsedData = data.map(s => Vectors.dense(s.split(' ').map(_.toDouble))).cache()
+ val keyValueRDD = data.map(line => (line.split(' ')(0).toString,(line.split(' ')(1)+" "+line.split(' ')(2)).toString())).cache()
+  val groupedByKey = keyValueRDD.groupByKey()
+ /* var wordMap = new HashMap[Int,HashMap[Int,Int]]
   val parsedDataList = parsedData.toArray()
   var innerMap = new HashMap[Int,Int]
   var previous = parsedDataList(0).toArray(0).toInt
@@ -35,7 +35,7 @@ object RunIntro extends Serializable {
          innerMap = new HashMap[Int,Int]
       }
   }
-  wordMap.foreach(println)
+  wordMap.foreach(println)*/
 
   // Cluster the data into two classes using KMeans
   /*val numClusters = 20
