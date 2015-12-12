@@ -72,7 +72,7 @@ object RunIntro {
 //    prevError = WSSE;
 //    println("Error" + err)
 //    }
-     // TODO
+   
     val clusterCenters = clusters.clusterCenters
     
     val v1 = Vectors.sparse(2, Array(0, 1), Array(1.0, 2.0))
@@ -84,8 +84,22 @@ object RunIntro {
     
 //    println(minDist(v1, Array(v2, v3)))
    
-    val test2 = docVectors.map(x => minDist(x, clusterCenters))
-    test2.foreach(x => println(x.toArray.deep.mkString("\n")))
+    val docToClusterCenters = docVectors.map(x => minDist(x, clusterCenters))
+//    test2.foreach(x => println(x.toArray.deep.mkString("\n")))//
+    println("Done mapping")
+    
+    val backUpClusters = docToClusterCenters.map(x => (x(2), Array(x(1))))
+//    backUpClusters.foreach(x => println(x._1.size))
+    println("BackupClusters size :"+backUpClusters.keys.toArray().size)
+    println("Num of cluster centers: "+clusterCenters.size)
+    
+    val clusterNeighbours = backUpClusters.distinct().reduceByKey((a,b) => a ++ b)
+//    clusterNeighbours.foreach(x => println(" TEST "))
+    clusterNeighbours.foreach(x => println(x._2.distinct.size))
+    
+    //println(clusterNeighbours.keys.toArray().size)
+    //clusterNeighbours.foreach(println)
+    
 //  1) RDD apo docID se tuple [ predict(docID)  minDistFromAllCentersExceptItsOwnClusterCenterID ]   
 //     
 //  2) RDD backupClusters = clusterCenter se backupClusterCenter
@@ -218,7 +232,7 @@ object RunIntro {
       }
     }
     
-    return Array(ownClusterCenter,minVec)
+    return Array(point, ownClusterCenter,minVec)
   }
     
   def dist( a:mllib.linalg.Vector, b:mllib.linalg.Vector ) : Double = {
