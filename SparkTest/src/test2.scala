@@ -6,8 +6,11 @@ import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark._
 import org.apache.spark.ml.clustering.KMeans
 import org.apache.spark.mllib.clustering.KMeans
+import org.apache.spark.ml.clustering.KMeansModel
 
-object RunIntro extends Serializable {
+object RunIntro {
+  var clusters :mllib.clustering.KMeansModel = _;
+  
   def main(args: Array[String]): Unit = {
   val sc = new SparkContext(new SparkConf().setAppName("Intro").setMaster("local"))
 //  val rawblocks = sc.textFile("docword.nips.txt")
@@ -42,20 +45,24 @@ object RunIntro extends Serializable {
    var err = 1.0
    var numClusters = 20
    var count = 0
-   println("Initializing complete")
    
-   while (count < 0.01){
-     count = count + 1
-     println("Iteration " + count)
-     numClusters = numClusters.+(1)
-     val clusters = KMeans.train(docVectors, numClusters, 20)
-     val WSSE = clusters.computeCost(docVectors)
-     println("Iteration " + count)
-     println("Within Set Sum of Squared Errors = " + WSSE)
-     err = 1.0 - (WSSE/prevError)
-     prevError = WSSE
-     println("Error: "+err+ " previous: " +prevError)
-   }
+   println("Initializing complete")
+   clusters = KMeansModel.load(sc, "kMeansTest")
+  //   
+//   while (count < 0.01){
+//     count = count + 1
+//     println("Iteration " + count)
+//     numClusters = numClusters.+(1)
+//     clusters = KMeans.train(docVectors, numClusters, 20)
+//     val WSSE = clusters.computeCost(docVectors)
+//     println("Iteration " + count)
+//     println("Within Set Sum of Squared Errors = " + WSSE)
+//     err = 1.0 - (WSSE/prevError)
+//     prevError = WSSE
+//     println("Error: "+err+ " previous: " +prevError)
+//   }
+//  clusters.save(sc, "kMeansTest")
+   
 //  prevError = 
 //  while (err > 0.5){
 //    clusters+=1;  
@@ -65,10 +72,20 @@ object RunIntro extends Serializable {
 //    prevError = WSSE;
 //    println("Error" + err)
 //    }
-     
-     
-     
-     
+     // TODO
+    val clusterCenters = clusters.clusterCenters
+    
+    val v1 = Vectors.sparse(2, Array(0, 1), Array(1.0, 2.0))
+    
+    val v2 = Vectors.sparse(2, Array(0, 1), Array(1.0, 5.0))
+    
+    val v3 = Vectors.sparse(2, Array(0, 1), Array(1.0, 2.0))
+    
+    
+//    println(minDist(v1, Array(v2, v3)))
+   
+    val test2 = docVectors.map(x => minDist(x, clusterCenters))
+    test2.foreach(x => println(x.toArray.deep.mkString("\n")))
 //  1) RDD apo docID se tuple [ predict(docID)  minDistFromAllCentersExceptItsOwnClusterCenterID ]   
 //     
 //  2) RDD backupClusters = clusterCenter se backupClusterCenter
@@ -81,14 +98,8 @@ object RunIntro extends Serializable {
 //  
 //  
 //  
-//  
-//  
-//  
-//  
-//  
-//  
-//  
-  
+//
+   
      
      
  /* var wordMap = new HashMap[Int,HashMap[Int,Int]]
@@ -190,4 +201,33 @@ object RunIntro extends Serializable {
 //    }
     noheader.foreach(println) */
    }
+   
+  def minDist( point:mllib.linalg.Vector, clusterIDs:Array[mllib.linalg.Vector] ) : Array[mllib.linalg.Vector] = {
+    assert(clusterIDs.size > 0)
+    val ownClusterCenter = 
+      clusters.clusterCenters(clusters.predict(point))
+//        Vectors.sparse(2, Array(0, 1), Array(1.0, 5.0))
+    
+    var min = Double.MaxValue
+    var minVec = clusterIDs(0)
+    
+    for (i<-0 until clusterIDs.size){  
+      if(dist(point, clusterIDs(i)) <= min && (!clusterIDs(i).equals(ownClusterCenter)) ){
+        min = dist(point, clusterIDs(i))
+        minVec = clusterIDs(i)
+      }
+    }
+    
+    return Array(ownClusterCenter,minVec)
+  }
+    
+  def dist( a:mllib.linalg.Vector, b:mllib.linalg.Vector ) : Double = {
+    assert(a.size == b.size)
+    var sum = 0.0
+    for (i<-0 until a.size){
+      sum = sum + ( a(i) - b(i) ) * ( a(i) - b(i) )
+    }
+    
+    return Math.sqrt(sum)
+  } 
  }
