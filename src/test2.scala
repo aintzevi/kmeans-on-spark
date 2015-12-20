@@ -1,15 +1,18 @@
-
 import org.apache.spark.mllib.linalg
 import org.apache.spark.rdd.RDD
 
 import scala.math.random
 import scala.collection.mutable._
+import org.apache.spark.mllib.feature._
 import org.apache.spark.mllib.clustering.{KMeans, KMeansModel}
 import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.mllib.feature.IDF
 import org.apache.spark._
 import org.apache.spark.ml.clustering.KMeans
 import org.apache.spark.mllib.clustering.KMeans
 import org.apache.spark.ml.clustering.KMeansModel
+import scala.tools.nsc.io._
+
 
 object RunIntro {
   var clusters :mllib.clustering.KMeansModel = _;
@@ -19,12 +22,32 @@ object RunIntro {
   var clusterCentersMap : collection.immutable.Map[Int,linalg.Vector] = _;
   var distinctDocs = 1;
 
+  var step2Total = 0.0;
+  var step3Total = 0.0;
+  var step4Total = 0.0;
+  var totalIterations = 0;
+  var inputFile = "";
+  var outputFile = "";
+
   def main(args: Array[String]): Unit = {
+
+//    var args = Array("docword.test.txt","output.txt")
+
+    if (args.length != 2) {
+      println("Incorrect number of parameters")
+      System.exit(-1)
+    }
+
+    inputFile = args(0)
+    outputFile = args(1)
+
     val sc = new SparkContext(new SparkConf().setAppName("Intro").setMaster("local"))
+
     //  val rawblocks = sc.textFile("docword.nips.txt")
     //  def isHeader(line: String) = line.split(' ').length < 2
 
-    val data = sc.textFile("docword.test.txt")
+    File(outputFile).delete()
+    val data = sc.textFile(inputFile)
     //  Num of docs
     distinctDocs = data.toArray()(0).toInt
     //  Num of distinct words
@@ -41,59 +64,110 @@ object RunIntro {
     val groupedByDoc = docToWordTuplesRDD.groupByKey()
 
     //  groupedByDoc.foreach(println)
-    val docVectors = groupedByDoc.map(key => Vectors.sparse(distinctWords + 1, // For each doc
+    val docVectors2 = groupedByDoc.map(key => Vectors.sparse(distinctWords + 1, // For each doc
       key._2.toString.replace("CompactBuffer(", "").replace(")", "").split(',').map(x => x.trim().split(' ')(0).toInt), // Get all wordIDs as sparse Vector positions
       key._2.toString.replace("CompactBuffer(", "").replace(")", "").split(',').map(x => x.trim().split(' ')(1).toDouble))) // Get all wordFreqs as sparse Vector contents
     //  docVectors.foreach(println)
+    KMeansExecutor(docVectors2)
 
+    var step4StartingTime = System.nanoTime()
+    // Maps from a center vector, to all the vectors of its contents
+    val clusterCentersToClusterVectors = clusterContents.map(x => (clusterCentersMap.get(x._1),x._2))
+//    clusterCentersToClusterVectors.foreach(x => println(x._2.length))
+    // Maps from a cluster center vector, to the closest vector belonging in that cluster
+    val centersToClosestClusterVectors = clusterCentersToClusterVectors.map(x => (x._1,getMinPoint(x._1.last,x._2)))
+//    centersToClosestClusterVectors.foreach(x => println(dist(x._1.last,x._2)))
+    step4Total = step4Total + (System.nanoTime() - step4StartingTime)
 
-    //  Init variables
-    var prevError = Double.MaxValue
-    var err = 1.0
-    var numClusters = 3
-    var count = 0
-    var silhouette = -1.0
-    var prevSilhouette = -1.0
-    val upperLimit = distinctDocs / 3
-    val errorThreshold = 0.03
-    val silhouetteThreshold = -0.03
-
-
-    println("Initializing complete")
-    //   clusters = KMeansModel.load(sc, "kMeansTest100clusters")
-
-    while ((Math.abs(err) > errorThreshold && silhouette < silhouetteThreshold) && numClusters < upperLimit) {
-      count = count + 1
-      println("Iteration " + count)
-      clusters = KMeans.train(docVectors, numClusters, 20)
-      val WSSE = clusters.computeCost(docVectors)
-      println("Iteration " + count)
-      println("Within Set Sum of Squared Errors = " + WSSE)
-      err = 1.0 - (WSSE / prevError)
-      println("Stat: Error: " + err + " previous: " + prevError)
-      prevError = WSSE
-      silhouette = silhouetteWrapper(docVectors)
-      println("Stat: Silhouette : " + silhouette)
-      println("Stat: SilhouetteRatio : " + (1 - Math.abs(silhouette / prevSilhouette)))
-      prevSilhouette = silhouette
-      numClusters = numClusters + 1 + (Math.abs(silhouette - silhouetteThreshold) * 50).toInt
+    // Write all array contents to a single string, including line separators
+    var representativePoints = ""
+    val centersToClosestVectorArray = centersToClosestClusterVectors.collect()
+    for(i<-0 until centersToClosestVectorArray.length) {
+      representativePoints = representativePoints+centersToClosestVectorArray(i)._2.toString+System.getProperty("line.separator")
     }
 
-    def getMinPoint(center : linalg.Vector, vectors : Array[linalg.Vector]) : linalg.Vector = {
-      assert(vectors.length > 0)
-      var point = vectors(0)
-      for(i<-0 until vectors.length){
-        if(dist(center,vectors(i)) < dist(center,point))
-          point = vectors(i)
-      }
-      return point
+    File(outputFile).appendAll(System.getProperty("line.separator") + "Chosen k: " + clusterCentersMap.keys.size + System.getProperty("line.separator") + representativePoints)
+
+/*    val hashingTF = new HashingTF()
+    val totallyLegitIterable = groupedByDoc.map(x => x._2)*/
+    val tf: RDD[linalg.Vector] = docVectors2.cache()
+    //val tf: RDD[linalg.Vector] = docVectors.map(x => hashingTF.transform(docVectors.collect().toIterable))
+    //      hashingTF.transform(docVectors)
+
+//    tf.cache()
+    val idf = new IDF(minDocFreq = 2).fit(tf)
+    val tfidf: RDD[linalg.Vector] = idf.transform(tf)
+//    println("Old vectors: "+docVectors2.count())
+//    docVectors2.foreach(x => println(x.numNonzeros))
+    val docVectors = tfidf.cache()
+//    docVectors.foreach(x => println(x.numNonzeros))
+    KMeansExecutor(docVectors)
+
+    step4StartingTime = System.nanoTime()
+    // Maps from a center vector, to all the vectors of its contents
+    val clusterCentersToClusterVectors2 = clusterContents.map(x => (clusterCentersMap.get(x._1),x._2))
+    //    clusterCentersToClusterVectors.foreach(x => println(x._2.length))
+    // Maps from a cluster center vector, to the closest vector belonging in that cluster
+    val centersToClosestClusterVectors2 = clusterCentersToClusterVectors2.map(x => (x._1,getMinPoint(x._1.last,x._2)))
+    //    centersToClosestClusterVectors.foreach(x => println(dist(x._1.last,x._2)))
+    step4Total = step4Total + (System.nanoTime() - step4StartingTime)
+
+
+    var representativePoints2 = ""
+    val centersToClosestVectorArray2 = centersToClosestClusterVectors2.collect()
+    for(i<-0 until centersToClosestVectorArray2.length) {
+      representativePoints2 = representativePoints2+centersToClosestVectorArray2(i)._2.toString+System.getProperty("line.separator")
     }
 
-    val whatever = clusterContents.map(x => (clusterCentersMap.get(x._1),x._2))
-    //val whatever1 = whatever.map(x => (x._1,x._2.map(x1 => (dist(x._1.last,x1),x1))))
-    whatever.foreach(x => println(x._2.length))
-    val whatever1 = whatever.map(x => (x._1,getMinPoint(x._1.last,x._2)))
-    whatever1.foreach(x => println(dist(x._1.last,x._2)))
+    File(outputFile).appendAll(System.getProperty("line.separator") + "Chosen k: " + clusterCentersMap.keys.size + System.getProperty("line.separator") + representativePoints2)
+
+    File(outputFile).appendAll(
+      System.getProperty("line.separator") + step2Total/totalIterations/1000/1000/1000 + " s" +
+        System.getProperty("line.separator") + step3Total/totalIterations/1000/1000/1000 + " s" +
+          System.getProperty("line.separator") + step4Total/1000/1000/1000/2 + " s"
+    )
+
+    /*   //  Init variables
+       var prevError2 = Double.MaxValue
+       var err2 = 1.0
+       var numClusters2 = 5
+       var count2 = 0
+       var silhouette2 = -1.0
+       var prevSilhouette2 = -1.0
+       val upperLimit2 = distinctDocs / 3
+       val errorThreshold2 = 0.03
+       val silhouetteThreshold2 = -0.03
+
+
+       println("Initializing complete")
+       //   clusters = KMeansModel.load(sc, "kMeansTest100clusters")
+
+   //    while ((Math.abs(err2) > errorThreshold2 && silhouette2 < silhouetteThreshold2) && numClusters2 < upperLimit2) {
+         count2 = count2 + 1
+         println("Iteration " + count2)
+         clusters = KMeans.train(tfidf, numClusters2, 20)
+         val WSSE2 = clusters.computeCost(tfidf)
+         println("Iteration " + count2)
+         println("Within Set Sum of Squared Errors = " + WSSE2)
+         err2 = 1.0 - (WSSE2 / prevError2)
+         println("Stat: Error: " + err2 + " previous: " + prevError2)
+         prevError2 = WSSE2
+         silhouette2 = silhouetteWrapper(tfidf)
+         println("Stat: Silhouette : " + silhouette2)
+         println("Stat: SilhouetteRatio : " + (1 - Math.abs(silhouette2 / prevSilhouette2)))
+         prevSilhouette2 = silhouette2
+         numClusters2 = numClusters2 + 1 + (Math.abs(silhouette2 - silhouetteThreshold2) * 50).toInt
+   //    }
+
+       val whatever2 = clusterContents.map(x => (clusterCentersMap.get(x._1),x._2))
+       //val whatever1 = whatever.map(x => (x._1,x._2.map(x1 => (dist(x._1.last,x1),x1))))
+       whatever2.foreach(x => println(x._2.length))
+       val whatever12 = whatever2.map(x => (x._1,getMinPoint(x._1.last,x._2)))
+       whatever12.foreach(x => println(dist(x._1.last,x._2)))*/
+
+//    tf.cache()
+//    val idf = new IDF(minDocFreq = 2).fit(tf)
+//    val tfidf: RDD[Vector] = idf.transform(tf)
 
     //clusters.save(sc, "kMeansTest100clustersTEST")
 
@@ -171,7 +245,7 @@ object RunIntro {
     }
     if ( cluster._2.length == 0 ) sI=0.0
     else sI = sI/(cluster._2.length).toDouble
-    println("Si of cluster "+cluster._1+" with size "+cluster._2.length+" = "+sI)
+//    println("Si of cluster "+cluster._1+" with size "+cluster._2.length+" = "+sI)
     return sI
   }
 
@@ -191,10 +265,10 @@ object RunIntro {
     assert(clusterIDs.length > 0)
     val ownClusterCenter = clusters.clusterCenters(clusters.predict(point))
 //    println("Entered minDist, clusters size "+clusterIDs.length)
-    
+
     var min = Double.MaxValue
     var minVec = clusterIDs(0)
-    
+
     for (i<-0 until clusterIDs.size){
       if(dist(point, clusterIDs(i)) <= min && (!clusterIDs(i).equals(ownClusterCenter)) ){
         min = dist(point, clusterIDs(i))
@@ -204,16 +278,73 @@ object RunIntro {
 //    println("Nearest neighbour found center "+minVec.numNonzeros)
     return Array(point, ownClusterCenter, minVec)
   }
-    
+
   def dist( a:mllib.linalg.Vector, b:mllib.linalg.Vector ) : Double = {
     assert(a.size == b.size)
     var sum = 0.0
     for (i<-0 until a.size){
       sum = sum + ( a(i) - b(i) ) * ( a(i) - b(i) )
     }
-    
+
     return Math.sqrt(sum)
   }
+
+  def KMeansExecutor(docVectors : RDD[linalg.Vector])= {
+    //  Init variables
+    var prevError = Double.MaxValue
+    var err = 1.0
+    var numClusters = 5
+//    var count = 0
+    var silhouette = -1.0
+    var prevSilhouette = -1.0
+    val upperLimit = distinctDocs / 3
+    val errorThreshold = 0.03
+    val silhouetteThreshold = -0.03
+
+
+    println("Initializing complete")
+    //   clusters = KMeansModel.load(sc, "kMeansTest100clusters")
+
+    while ((Math.abs(err) > errorThreshold && silhouette < silhouetteThreshold) && numClusters < upperLimit) {
+//      println("Iteration " + count)
+      val step2StartingTime = System.nanoTime()
+      clusters = KMeans.train(docVectors, numClusters, 20)
+      step2Total = step2Total + (System.nanoTime() - step2StartingTime)
+      val step3StartingTime = System.nanoTime()
+      val WSSE = clusters.computeCost(docVectors)
+
+//      Print what's going on
+//      println("Within Set Sum of Squared Errors = " + WSSE)
+//      println("Stat: Error: " + err + " previous: " + prevError)
+//      println("Stat: Silhouette : " + silhouette)
+//      println("Stat: SilhouetteRatio : " + (1 - Math.abs(silhouette / prevSilhouette)))
+      err = 1.0 - (WSSE / prevError)
+      silhouette = silhouetteWrapper(docVectors)
+      step3Total = step3Total + (System.nanoTime() - step3StartingTime)
+
+//      Update previous variables
+      totalIterations = totalIterations + 1
+      prevError = WSSE
+      prevSilhouette = silhouette
+      numClusters = numClusters + 1 + (Math.abs(silhouette - silhouetteThreshold) * 50).toInt
+
+      File(outputFile).appendAll(System.getProperty("line.separator") +  "WSSE: " + WSSE + System.getProperty("line.separator") + "Silhouette: " + silhouette)
+
+    }
+  }
+
+  def getMinPoint(center : linalg.Vector, vectors : Array[linalg.Vector]) : linalg.Vector = {
+    assert(vectors.length > 0)
+    var point = vectors(0)
+    for(i<- 0 until vectors.length){
+      if(dist(center,vectors(i)) < dist(center,point))
+        point = vectors(i)
+    }
+    return point
+  }
+
+
+
 
 
 
