@@ -1,1 +1,1 @@
-This project is OVER
+Implementation of the K-Means clustering algorithm using Spark and Scala
